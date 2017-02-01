@@ -19,9 +19,8 @@ public class ReadRequestChainStats
 {
     // All data below in MB
     // From Remote
-    private long prefixRead = 0;
-    private long suffixRead = 0;
-    private long requestedRead = 0;
+    private long readBackendBytes = 0;
+    private long readActualBytes = 0;
     private long warmupPenalty = 0;
     private long remoteReads = 0;
 
@@ -32,47 +31,36 @@ public class ReadRequestChainStats
     private long nonLocalReads = 0;
     private long nonLocalDataRead = 0;
 
-    public long getPrefixRead()
+    public long getReadActualBytes()
     {
-        return prefixRead;
+        return readActualBytes;
     }
 
-    public ReadRequestChainStats setPrefixRead(long prefixReadInBytes)
+    public ReadRequestChainStats setReadActualBytes(long readActualBytes)
     {
-        this.prefixRead = prefixReadInBytes;
+        this.readActualBytes = readActualBytes;
         return this;
     }
 
-    public long getSuffixRead()
+    public long getReadBackendBytes()
     {
-        return suffixRead;
+        return readBackendBytes;
     }
 
-    public ReadRequestChainStats setSuffixRead(long suffixRead)
+    public ReadRequestChainStats setReadBackendBytes(long readBackendBytes)
     {
-        this.suffixRead = suffixRead;
-        return this;
-    }
-
-    public long getRequestedRead()
-    {
-        return requestedRead;
-    }
-
-    public ReadRequestChainStats setRequestedRead(long requestedRead)
-    {
-        this.requestedRead = requestedRead;
+        this.readBackendBytes = readBackendBytes;
         return this;
     }
 
     public long getTotalDownloaded()
     {
-        return prefixRead + requestedRead + suffixRead;
+        return readBackendBytes;
     }
 
     public long getExtraRead()
     {
-        return prefixRead + suffixRead;
+        return readBackendBytes - readActualBytes;
     }
 
     public ReadRequestChainStats setRemoteReads(long remoteReads)
@@ -145,9 +133,8 @@ public class ReadRequestChainStats
     {
         return new ReadRequestChainStats()
                 .setCachedDataRead(cachedDataRead + other.getCachedDataRead())
-                .setPrefixRead(prefixRead + other.getPrefixRead())
-                .setRequestedRead(requestedRead + other.getRequestedRead())
-                .setSuffixRead(suffixRead + other.getSuffixRead())
+                .setReadActualBytes(readActualBytes + other.getReadActualBytes())
+                .setReadBackendBytes(readBackendBytes + other.getReadBackendBytes())
                 .setRemoteReads(remoteReads + other.getRemoteReads())
                 .setWarmupPenalty(warmupPenalty + other.getWarmupPenalty())
                 .setCachedReads(cachedReads + other.getCachedReads())
