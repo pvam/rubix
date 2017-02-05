@@ -22,9 +22,6 @@ import org.apache.hadoop.fs.FSDataInputStream;
 
 import java.io.IOException;
 import java.io.RandomAccessFile;
-import java.nio.MappedByteBuffer;
-import java.nio.channels.FileChannel;
-
 import static com.google.common.base.Preconditions.checkState;
 
 /**
@@ -61,38 +58,21 @@ public class RemoteReadRequestChain
         }
 
         RandomAccessFile localFile = null;
-        FileChannel fc = null;
 
         try {
             localFile = new RandomAccessFile(localFilename, "rw");
-            fc = localFile.getChannel();
             for (ReadRequest readRequest : readRequests) {
                 log.debug(String.format("Executing ReadRequest: [%d, %d, %d, %d, %d]", readRequest.getBackendReadStart(), readRequest.getBackendReadEnd(), readRequest.getActualReadStart(), readRequest.getActualReadEnd(), readRequest.getDestBufferOffset()));
-                inputStream.seek(readRequest.backendReadStart);
-                //TODO: Replace this with RandomAccessFile
-                MappedByteBuffer mbuf = fc.map(FileChannel.MapMode.READ_WRITE, readRequest.backendReadStart, readRequest.getBackendReadLength());
+                inputStream.seek(readRequest.getActualReadStart());
+                localFile.seek(readRequest.getActualReadStart());
                 readBackendBytes += readRequest.getBackendReadLength();
-                log.debug(String.format("Mapped file from %d till length %d", readRequest.backendReadStart, readRequest.getBackendReadLength()));
-                /*
-                 * MappedByteBuffer does not provide backing byte array, so cannot write directly to it via FSDataOutputStream.read
-                 * Instead, download to normal destination buffer (+offset buffer to get block boundaries) and then copy to MappedByteBuffer
-                 */
-
-                // TODO: use single byte buffer for all three streams
-                /* TODO: also GC cost can be lowered by shared buffer pool, a small one.
-                    IOUtils.copyLarge method. A single 4kB byte buffer can be used to copy whole file
-                  */
-
                 log.debug(String.format("Trying to Read %d bytes into destination buffer", readRequest.getActualReadLength()));
-                int readBytes = readAndCopy(readRequest.getDestBuffer(), readRequest.destBufferOffset, mbuf, readRequest.getActualReadLength());
+                int readBytes = readAndCopy(readRequest.getDestBuffer(), readRequest.destBufferOffset, localFile, readRequest.getActualReadLength());
                 readActualBytes += readBytes;
                 log.debug(String.format("Read %d bytes into destination buffer", readBytes));
             }
         }
         finally {
-            if (fc != null) {
-                fc.close();
-            }
             if (localFile != null) {
                 localFile.close();
             }
@@ -101,7 +81,7 @@ public class RemoteReadRequestChain
         return readActualBytes;
     }
 
-    private int readAndCopy(byte[] destBuffer, int destBufferOffset, MappedByteBuffer localFileBuffer, int length)
+    private int readAndCopy(byte[] destBuffer, int destBufferOffset, RandomAccessFile localFileBuffer, int length)
             throws IOException
     {
         int nread = 0;
@@ -113,7 +93,7 @@ public class RemoteReadRequestChain
             nread += nbytes;
         }
         long start = System.nanoTime();
-        localFileBuffer.put(destBuffer, destBufferOffset, length);
+        localFileBuffer.write(destBuffer, destBufferOffset, length);
         warmupPenalty += System.nanoTime() - start;
         return nread;
     }

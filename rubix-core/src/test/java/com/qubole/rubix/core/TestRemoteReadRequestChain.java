@@ -134,7 +134,7 @@ public class TestRemoteReadRequestChain
         for (int i = 1; i < 20; i++)
         {
             if (i % 2 == 0) {
-                // epmty buffer
+                // empty buffer
                 localFileInputStream.read(emptyBuffer, 0, 100);
                 for (int j = 0; j < 100; j++) {
                     assertTrue("Got data instead of hole: " + emptyBuffer[j], emptyBuffer[j] == 0);
