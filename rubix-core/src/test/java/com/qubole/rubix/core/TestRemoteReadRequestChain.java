@@ -77,7 +77,9 @@ public class TestRemoteReadRequestChain
         testRead(readRequests,
                 buffer,
                 generatedTestData,
-                generatedTestData);
+                generatedTestData,
+                false,
+                false);
     }
 
     @Test
@@ -106,13 +108,17 @@ public class TestRemoteReadRequestChain
         testRead(readRequests,
                 buffer,
                 expectedBufferOutput,
-                expectedCacheOutput);
+                expectedCacheOutput,
+                true,
+                true);
     }
 
     private void testRead(ReadRequest[] readRequests,
             byte[] buffer,
             String expectedBufferOutput,
-            String expectedCacheOutput)
+            String expectedCacheOutput,
+            boolean isFirstBlockPartial,
+            boolean isLastBlockPartial)
             throws IOException
     {
         for (ReadRequest rr : readRequests) {
@@ -139,7 +145,7 @@ public class TestRemoteReadRequestChain
         FileInputStream localFileInputStream = new FileInputStream(new File(localFileName));
         for (int i = 1; i < 20; i++)
         {
-            if (i % 2 == 0) {
+            if (i % 2 == 0 || (i==1 && isFirstBlockPartial) || (i==19 && isLastBlockPartial)) {
                 // empty buffer
                 localFileInputStream.read(emptyBuffer, 0, 100);
                 for (int j = 0; j < 100; j++) {
