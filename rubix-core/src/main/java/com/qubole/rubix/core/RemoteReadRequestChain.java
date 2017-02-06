@@ -35,16 +35,18 @@ public class RemoteReadRequestChain
     final FSDataInputStream inputStream;
     final String localFilename;
 
+    private int blockSize = 0;
     private long warmupPenalty = 0;
     private int readBackendBytes = 0;
     private int readActualBytes = 0;
 
     private static final Log log = LogFactory.getLog(RemoteReadRequestChain.class);
 
-    public RemoteReadRequestChain(FSDataInputStream inputStream, String localFile)
+    public RemoteReadRequestChain(FSDataInputStream inputStream, String localFile, int blockSize)
     {
         this.inputStream = inputStream;
         this.localFilename = localFile;
+        this.blockSize = blockSize;
     }
 
     public Integer call()
@@ -67,9 +69,21 @@ public class RemoteReadRequestChain
                 localFile.seek(readRequest.getActualReadStart());
                 readBackendBytes += readRequest.getBackendReadLength();
                 log.debug(String.format("Trying to Read %d bytes into destination buffer", readRequest.getActualReadLength()));
-                int readBytes = readAndCopy(readRequest.getDestBuffer(), readRequest.destBufferOffset, localFile, readRequest.getActualReadLength());
+                int readBytes = readAndCopy(readRequest.getDestBuffer(), readRequest.destBufferOffset, readRequest.getActualReadLength());
                 readActualBytes += readBytes;
                 log.debug(String.format("Read %d bytes into destination buffer", readBytes));
+
+                long start = System.nanoTime();
+                long cacheReadStartBlock = getCacheReadStartBlock(readRequest);
+                long cacheReadEndBlock = getCacheReadEndBlock(readRequest);
+                if (cacheReadStartBlock <= cacheReadEndBlock) {
+                    int beginOffset = (int) (cacheReadStartBlock * blockSize - readRequest.getActualReadStart());
+                    int endOffset = (int) (readRequest.getActualReadEnd() - (cacheReadEndBlock + 1) * blockSize);
+                    int cacheReadLength = readRequest.getActualReadLength() - beginOffset - endOffset;
+                    localFile.write(readRequest.getDestBuffer(), readRequest.destBufferOffset + beginOffset, cacheReadLength);
+                    warmupPenalty += System.nanoTime() - start;
+                    log.debug(String.format("Read %d bytes into cache", cacheReadLength));
+                }
             }
         }
         finally {
@@ -81,7 +95,7 @@ public class RemoteReadRequestChain
         return readActualBytes;
     }
 
-    private int readAndCopy(byte[] destBuffer, int destBufferOffset, RandomAccessFile localFileBuffer, int length)
+    private int readAndCopy(byte[] destBuffer, int destBufferOffset, int length)
             throws IOException
     {
         int nread = 0;
@@ -92,9 +106,6 @@ public class RemoteReadRequestChain
             }
             nread += nbytes;
         }
-        long start = System.nanoTime();
-        localFileBuffer.write(destBuffer, destBufferOffset, length);
-        warmupPenalty += System.nanoTime() - start;
         return nread;
     }
 
@@ -114,7 +125,14 @@ public class RemoteReadRequestChain
             BookKeeperFactory bookKeeperFactory = new BookKeeperFactory();
             RetryingBookkeeperClient client = bookKeeperFactory.createBookKeeperClient(conf);
             for (ReadRequest readRequest : readRequests) {
-                client.setAllCached(remotePath, fileSize, lastModified, toBlock(readRequest.getActualReadStart(), blockSize), toBlock(readRequest.getActualReadEnd() - 1, blockSize) + 1);
+                long cacheBeginBlock = getCacheReadStartBlock(readRequest);
+                long cacheEndBlock = getCacheReadEndBlock(readRequest) + 1;
+                System.out.printf("Cache block, begin %d , end %d\n", cacheBeginBlock, cacheEndBlock);
+                //Check whether there is at least one block that can be cached
+                if (cacheBeginBlock < cacheEndBlock) {
+                    System.out.println("Caching some part of data");
+                    client.setAllCached(remotePath, fileSize, lastModified, cacheBeginBlock, cacheEndBlock);
+                }
             }
             client.close();
         }
@@ -123,7 +141,17 @@ public class RemoteReadRequestChain
         }
     }
 
-    private long toBlock(long pos, int blockSize)
+    private long getCacheReadStartBlock(ReadRequest readRequest)
+    {
+        return toBlock(readRequest.actualReadStart + blockSize - 1);
+    }
+
+    private long getCacheReadEndBlock(ReadRequest readRequest)
+    {
+        return toBlock(readRequest.actualReadEnd - blockSize + 1);
+    }
+
+    private long toBlock(long pos)
     {
         return pos / blockSize;
     }

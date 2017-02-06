@@ -325,7 +325,7 @@ public class CachingInputStream
                 else {
                     log.debug(String.format("Sending block %d to remoteReadRequestChain", blockNum));
                     if (remoteReadRequestChain == null) {
-                        remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath);
+                        remoteReadRequestChain = new RemoteReadRequestChain(inputStream, localPath, blockSize);
                     }
                     remoteReadRequestChain.addReadRequest(readRequest);
                 }
