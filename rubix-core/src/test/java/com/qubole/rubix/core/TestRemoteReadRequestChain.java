@@ -37,6 +37,7 @@ public class TestRemoteReadRequestChain
     File backendFile = new File(backendFileName);
 
     String localFileName = "/tmp/testRemoteReadRequestChainLocalFile";
+    private int blockSize = 100;
 
     RemoteReadRequestChain remoteReadRequestChain;
 
@@ -51,7 +52,7 @@ public class TestRemoteReadRequestChain
 
         LocalFSInputStream localFSInputStream = new LocalFSInputStream(backendFileName);
         fsDataInputStream = new FSDataInputStream(localFSInputStream);
-        remoteReadRequestChain = new RemoteReadRequestChain(fsDataInputStream, localFileName);
+        remoteReadRequestChain = new RemoteReadRequestChain(fsDataInputStream, localFileName, blockSize);
     }
 
     @Test
@@ -72,10 +73,11 @@ public class TestRemoteReadRequestChain
                 new ReadRequest(1800, 1900, 1800, 1900, buffer, 900, backendFile.length())
         };
 
+        String generatedTestData = DataGen.getExpectedOutput(1000);
         testRead(readRequests,
                 buffer,
-                1000,
-                DataGen.getExpectedOutput(1000));
+                generatedTestData,
+                generatedTestData);
     }
 
     @Test
@@ -97,17 +99,20 @@ public class TestRemoteReadRequestChain
         };
 
         // Expected output is 50a100c100e....100q50s
-        String expectedOutput = DataGen.getExpectedOutput(1000).substring(50, 950);
+        String generatedTestData = DataGen.getExpectedOutput(1000);
+        String expectedBufferOutput = generatedTestData.substring(50, 950);
+        String expectedCacheOutput = generatedTestData.substring(100,900);
+
         testRead(readRequests,
                 buffer,
-                900,
-                expectedOutput);
+                expectedBufferOutput,
+                expectedCacheOutput);
     }
 
     private void testRead(ReadRequest[] readRequests,
             byte[] buffer,
-            int expectedReadLength,
-            String expectedOutput)
+            String expectedBufferOutput,
+            String expectedCacheOutput)
             throws IOException
     {
         for (ReadRequest rr : readRequests) {
@@ -119,13 +124,14 @@ public class TestRemoteReadRequestChain
         // 2. Execute and verify that buffer has right data
         int readSize = remoteReadRequestChain.call();
 
-        assertTrue("Wrong amount of data read " + readSize + " was expecting " + expectedReadLength, readSize == expectedReadLength);
-        String output = new String(buffer, Charset.defaultCharset());
-        assertTrue("Wrong data read, expected\n" + expectedOutput + "\nBut got\n" + output, expectedOutput.equals(output));
+        int expectedBufferOutputLength = expectedBufferOutput.length();
+        assertTrue("Wrong amount of data read " + readSize + " was expecting " + expectedBufferOutputLength, readSize == expectedBufferOutputLength);
+        String actualBufferOutput = new String(buffer, Charset.defaultCharset());
+        assertTrue("Wrong data read, expected\n" + expectedBufferOutput + "\nBut got\n" + actualBufferOutput, expectedBufferOutput.equals(actualBufferOutput));
 
         // 3. read from file and verify that it has the right data
         // data present should be of form 100bytes of data and 100bytes of holes
-        byte[] filledBuffer = new byte[1000];
+        byte[] filledBuffer = new byte[expectedCacheOutput.length()];
         byte[] emptyBuffer = new byte[100];
         int filledBufferOffset = 0;
         readSize = 0;
@@ -149,9 +155,9 @@ public class TestRemoteReadRequestChain
 
         log.info("READ: \n" + new String(filledBuffer, Charset.defaultCharset()));
 
-        assertTrue("Wrong amount of data read from localFile " + readSize, readSize == 1000);
-        output = new String(filledBuffer, Charset.defaultCharset());
-        assertTrue("Wrong data read in local file, expected\n" + DataGen.getExpectedOutput(readSize) + "\nBut got\n" + output, DataGen.getExpectedOutput(readSize).equals(output));
+        assertTrue("Wrong amount of data read from localFile " + readSize, readSize == expectedCacheOutput.length());
+        String actualCacheOutput = new String(filledBuffer, Charset.defaultCharset());
+        assertTrue("Wrong data read in local file, expected\n" + expectedCacheOutput + "\nBut got\n" + actualCacheOutput, expectedCacheOutput.equals(actualCacheOutput));
     }
 
     @AfterMethod
